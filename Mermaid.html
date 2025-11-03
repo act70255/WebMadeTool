@@ -1,0 +1,244 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mermaid 流程圖編輯器</title>
+    <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: #1e1e1e;
+            color: #d4d4d4;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .toolbar {
+            background: #2d2d2d;
+            padding: 12px 20px;
+            display: flex;
+            gap: 10px;
+            border-bottom: 1px solid #404040;
+        }
+
+        button {
+            background: #0e639c;
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: background 0.2s;
+        }
+
+        button:hover {
+            background: #1177bb;
+        }
+
+        .container {
+            display: flex;
+            flex: 1;
+            overflow: hidden;
+        }
+
+        .editor-panel,
+        .preview-panel {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .editor-panel {
+            border-right: 1px solid #404040;
+        }
+
+        textarea {
+            flex: 1;
+            background: #1e1e1e;
+            color: #d4d4d4;
+            border: none;
+            padding: 20px;
+            font-family: 'Consolas', 'Courier New', monospace;
+            font-size: 14px;
+            resize: none;
+            line-height: 1.6;
+        }
+
+        textarea:focus {
+            outline: none;
+        }
+
+        .preview-panel {
+            background: #252526;
+            overflow: auto;
+            padding: 20px;
+        }
+
+        #diagram {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100%;
+        }
+
+        .error {
+            color: #f48771;
+            padding: 20px;
+        }
+
+        input[type="file"] {
+            display: none;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="toolbar">
+        <button onclick="exportPNG()">匯出 PNG</button>
+        <button onclick="saveMmd()">存檔 (.mmd)</button>
+        <button onclick="document.getElementById('fileInput').click()">讀取檔案</button>
+        <input type="file" id="fileInput" accept=".mmd" onchange="loadMmd(event)">
+    </div>
+
+    <div class="container">
+        <div class="editor-panel">
+            <textarea id="editor" placeholder="輸入 Mermaid 語法...">graph TD
+    A[開始] --> B{是否完成?}
+    B -->|是| C[結束]
+    B -->|否| D[繼續工作]
+    D --> B</textarea>
+        </div>
+
+        <div class="preview-panel">
+            <div id="diagram"></div>
+        </div>
+    </div>
+
+    <script>
+        // 初始化 Mermaid
+        mermaid.initialize({
+            startOnLoad: false,
+            theme: 'dark'
+        });
+
+        const editor = document.getElementById('editor');
+        const diagram = document.getElementById('diagram');
+        let renderTimeout;
+
+        // 即時渲染流程圖
+        async function renderDiagram() {
+            const code = editor.value.trim();
+            if (!code) {
+                diagram.innerHTML = '<div class="error">請輸入 Mermaid 語法</div>';
+                return;
+            }
+
+            try {
+                diagram.innerHTML = '';
+                const { svg } = await mermaid.render('mermaid-diagram', code);
+                diagram.innerHTML = svg;
+            } catch (error) {
+                diagram.innerHTML = `<div class="error">語法錯誤：${error.message}</div>`;
+            }
+        }
+
+        // 延遲渲染以提升效能
+        editor.addEventListener('input', () => {
+            clearTimeout(renderTimeout);
+            renderTimeout = setTimeout(renderDiagram, 500);
+        });
+
+        // 支援 TAB 鍵插入 4 個空白
+        editor.addEventListener('keydown', (e) => {
+            if (e.key === 'Tab') {
+                e.preventDefault();
+
+                const start = editor.selectionStart;
+                const end = editor.selectionEnd;
+                const value = editor.value;
+
+                // 插入 4 空白
+                editor.value = value.substring(0, start) + '    ' + value.substring(end);
+
+                // 將游標移到空白之後
+                editor.selectionStart = editor.selectionEnd = start + 4;
+
+                // 觸發渲染
+                editor.dispatchEvent(new Event('input'));
+            }
+        });
+
+        // 匯出 PNG
+        async function exportPNG() {
+            const svg = diagram.querySelector('svg');
+            if (!svg) {
+                alert('請先產生流程圖');
+                return;
+            }
+
+            const canvas = document.createElement('canvas');
+            const ctx = canvas.getContext('2d');
+            const svgData = new XMLSerializer().serializeToString(svg);
+            const img = new Image();
+
+            img.onload = () => {
+                canvas.width = img.width;
+                canvas.height = img.height;
+                ctx.fillStyle = '#252526';
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+                ctx.drawImage(img, 0, 0);
+
+                canvas.toBlob((blob) => {
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = 'mermaid-diagram.png';
+                    a.click();
+                    URL.revokeObjectURL(url);
+                });
+            };
+
+            img.src = 'data:image/svg+xml;base64,' + btoa(unescape(encodeURIComponent(svgData)));
+        }
+
+        // 存檔為 .mmd
+        function saveMmd() {
+            const content = editor.value;
+            const blob = new Blob([content], { type: 'text/plain' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'diagram.mmd';
+            a.click();
+            URL.revokeObjectURL(url);
+        }
+
+        // 讀取 .mmd 檔案
+        function loadMmd(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                editor.value = e.target.result;
+                renderDiagram();
+            };
+            reader.readAsText(file);
+        }
+
+        // 初始渲染
+        renderDiagram();
+    </script>
+</body>
+
+</html>
