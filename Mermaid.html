@@ -28,6 +28,22 @@
             display: flex;
             gap: 10px;
             border-bottom: 1px solid #404040;
+            align-items: center;
+        }
+
+        .toolbar-left {
+            display: flex;
+            gap: 10px;
+            flex: 1;
+        }
+
+        .toggle-btn {
+            background: #3c3c3c;
+            margin-left: auto;
+        }
+
+        .toggle-btn:hover {
+            background: #505050;
         }
 
         button {
@@ -60,6 +76,13 @@
 
         .editor-panel {
             border-right: 1px solid #404040;
+            transition: flex 0.3s ease, min-width 0.3s ease;
+        }
+
+        .editor-panel.collapsed {
+            flex: 0;
+            min-width: 0;
+            overflow: hidden;
         }
 
         textarea {
@@ -82,13 +105,82 @@
             background: #252526;
             overflow: auto;
             padding: 20px;
+            position: relative;
         }
 
         #diagram {
+            display: inline-block;
+            min-width: 100%;
+            transform-origin: top center;
+            transition: transform 0.2s ease;
+        }
+
+        #diagram svg {
+            display: block;
+            margin: 0 auto;
+        }
+
+        .zoom-controls {
+            position: absolute;
+            top: 20px;
+            right: 20px;
             display: flex;
-            justify-content: center;
+            gap: 8px;
+            background: rgba(45, 45, 45, 0.95);
+            padding: 8px;
+            border-radius: 6px;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+            z-index: 100;
+        }
+
+        .zoom-controls button {
+            padding: 6px 12px;
+            font-size: 16px;
+            min-width: 36px;
+            background: #3c3c3c;
+        }
+
+        .zoom-controls button:hover {
+            background: #505050;
+        }
+
+        .zoom-level {
+            display: flex;
             align-items: center;
-            min-height: 100%;
+            color: #d4d4d4;
+            font-size: 13px;
+            padding: 0 8px;
+            min-width: 50px;
+            text-align: center;
+        }
+
+        /* 當圖表很小時，置中顯示 */
+        .preview-panel:has(#diagram svg[width]) {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        /* 滾動提示陰影效果 */
+        .preview-panel {
+            position: relative;
+        }
+
+        .preview-panel::after {
+            content: '';
+            position: fixed;
+            right: 0;
+            top: 73px;
+            bottom: 0;
+            width: 8px;
+            background: linear-gradient(to left, rgba(0,0,0,0.3), transparent);
+            pointer-events: none;
+            opacity: 0;
+            transition: opacity 0.3s;
+        }
+
+        .preview-panel:hover::after {
+            opacity: 1;
         }
 
         .error {
@@ -104,11 +196,14 @@
 
 <body>
     <div class="toolbar">
-        <button onclick="exportPNG()">匯出 PNG</button>
-        <button onclick="exportSVG()">匯出 SVG</button>
-        <button onclick="saveMmd()">存檔 (.mmd)</button>
-        <button onclick="document.getElementById('fileInput').click()">讀取檔案</button>
-        <input type="file" id="fileInput" accept=".mmd" onchange="loadMmd(event)">
+        <div class="toolbar-left">
+            <button onclick="exportPNG()">匯出 PNG</button>
+            <button onclick="exportSVG()">匯出 SVG</button>
+            <button onclick="saveMmd()">存檔 (.mmd)</button>
+            <button onclick="document.getElementById('fileInput').click()">讀取檔案</button>
+            <input type="file" id="fileInput" accept=".mmd" onchange="loadMmd(event)">
+        </div>
+        <button class="toggle-btn" onclick="toggleEditor()" id="toggleBtn">◀ 隱藏編輯器</button>
     </div>
 
     <div class="container">
@@ -121,6 +216,12 @@
         </div>
 
         <div class="preview-panel">
+            <div class="zoom-controls">
+                <button onclick="zoomOut()" title="縮小">-</button>
+                <span class="zoom-level" id="zoomLevel">100%</span>
+                <button onclick="zoomIn()" title="放大">+</button>
+                <button onclick="resetZoom()" title="重置">⟲</button>
+            </div>
             <div id="diagram"></div>
         </div>
     </div>
@@ -134,7 +235,9 @@
 
         const editor = document.getElementById('editor');
         const diagram = document.getElementById('diagram');
+        const zoomLevelDisplay = document.getElementById('zoomLevel');
         let renderTimeout;
+        let zoomLevel = 1; // 預設縮放為 100%
 
         // 即時渲染流程圖
         async function renderDiagram() {
@@ -179,7 +282,7 @@
             }
         });
 
-        // 匯出 PNG
+        // 匯出 PNG（支援解析度調整）
         async function exportPNG() {
             const svg = diagram.querySelector('svg');
             if (!svg) {
@@ -294,6 +397,57 @@
             };
             reader.readAsText(file);
         }
+
+        // 切換編輯器顯示/隱藏
+        function toggleEditor() {
+            const editorPanel = document.querySelector('.editor-panel');
+            const toggleBtn = document.getElementById('toggleBtn');
+
+            if (editorPanel.classList.contains('collapsed')) {
+                editorPanel.classList.remove('collapsed');
+                toggleBtn.textContent = '◀ 隱藏編輯器';
+            } else {
+                editorPanel.classList.add('collapsed');
+                toggleBtn.textContent = '▶ 顯示編輯器';
+            }
+        }
+
+        // 縮放功能
+        function updateZoom() {
+            diagram.style.transform = `scale(${zoomLevel})`;
+            zoomLevelDisplay.textContent = Math.round(zoomLevel * 100) + '%';
+        }
+
+        function zoomIn() {
+            if (zoomLevel < 3) { // 最大 300%
+                zoomLevel += 0.1;
+                updateZoom();
+            }
+        }
+
+        function zoomOut() {
+            if (zoomLevel > 1) { // 最小 100%
+                zoomLevel -= 0.1;
+                updateZoom();
+            }
+        }
+
+        function resetZoom() {
+            zoomLevel = 1;
+            updateZoom();
+        }
+
+        // 滑鼠滾輪縮放（按住 Ctrl）
+        document.querySelector('.preview-panel').addEventListener('wheel', (e) => {
+            if (e.ctrlKey) {
+                e.preventDefault();
+                if (e.deltaY < 0) {
+                    zoomIn();
+                } else {
+                    zoomOut();
+                }
+            }
+        }, { passive: false });
 
         // 初始渲染
         renderDiagram();
